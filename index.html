@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Haystack Load-Test Pipeline Builder (Low-Code)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="title-row">
+      <h1>Haystack Load-Test Pipeline Builder</h1>
+      <label class="name-field">Name:
+        <input id="pipeline-name" type="text" value="lasttest-log-analyse" />
+      </label>
+      <button id="btn-settings">⚙ Einstellungen</button>
+    </div>
+    <div class="toolbar">
+      <button id="btn-export">📤 JSON exportieren</button>
+      <button id="btn-import">📥 JSON importieren</button>
+      <button id="btn-clear">🗑️ Canvas leeren</button>
+      <button id="btn-sample">💡 Beispiel laden</button>
+      <button id="btn-generate" style="background: #4f46e5; border-color: #4338ca; color: #fff;">⚡ Pipeline generieren</button>
+      <button id="btn-validate">🔍 Validieren</button>
+      <button id="btn-deploy" style="background: #059669; border-color: #047857; color: #fff;">🚀 Deployment Guide</button>
+      <span id="status" class="status"></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Palette: komponenten aus der Registry -->
+    <aside id="palette" class="palette">
+      <h2>Komponenten</h2>
+      <div class="palette-search" style="margin-top: 4px; margin-bottom: 2px;">
+        <input id="palette-filter" type="text" placeholder="🔍 Komponenten filtern..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none; background: #f8fafc; transition: all 0.15s ease;" onfocus="this.style.borderColor='#6366f1'; this.style.boxShadow='0 0 0 3px rgba(99,102,241,0.1)';" onblur="this.style.borderColor='#cbd5e1'; this.style.boxShadow='none';" />
+      </div>
+      <div id="palette-groups"></div>
+    </aside>
+
+    <!-- Canvas: hier werden Nodes per Drag platziert -->
+    <section id="canvas-wrap" class="canvas-wrap">
+      <div id="viewport" class="viewport">
+        <svg id="edges" class="edges"></svg>
+        <div id="canvas" class="canvas"></div>
+      </div>
+      <div id="zoom-controls" class="zoom-controls">
+        <button id="zoom-in" title="Hineinzoomen (+)">+</button>
+        <span id="zoom-level">100%</span>
+        <button id="zoom-out" title="Herauszoomen (-)">−</button>
+        <button id="zoom-reset" title="Zoom zurücksetzen (0)">⤢</button>
+        <button id="zoom-fit" title="Alles einpassen (F)">⤡</button>
+      </div>
+      <div class="canvas-hint">Mausrad: Zoom · Leertaste+Ziehen oder Mittelklick: Pan · Pfeiltasten: Navigieren</div>
+    </section>
+
+    <!-- Parameter-Editor -->
+    <aside id="inspector" class="inspector">
+      <h2>Parameter</h2>
+      <div id="inspector-body">
+        <p class="hint">Wähle eine Komponente auf dem Canvas, um Parameter zu bearbeiten.</p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Modal für JSON import/export -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="modal-title">JSON</h3>
+      <textarea id="modal-text" spellcheck="false"></textarea>
+      <div class="modal-actions">
+        <button id="modal-copy">Kopieren</button>
+        <button id="modal-apply">Übernehmen (Import)</button>
+        <button id="modal-close">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal für globale Einstellungen (LLM-URL / API-Key) -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3>Globale Einstellungen (LLM)</h3>
+      <div class="insp-field">
+        <label>API Base-URL</label>
+        <input id="set-url" type="text" placeholder="https://api.openai.com/v1" />
+      </div>
+      <div class="insp-field">
+        <label>API-Key</label>
+        <input id="set-key" type="password" placeholder="${OPENAI_API_KEY} oder plaintext" />
+      </div>
+      <p class="hint">Diese Werte werden allen LLM-Komponenten (z.B. OpenAIGenerator) automatisch mitgegeben.</p>
+      <div class="modal-actions">
+        <button id="settings-save">Speichern</button>
+        <button id="settings-close">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal für generierte Pipeline (aus der Web-UI heraus erzeugt) -->
+  <div id="gen-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="gen-title">Generierte Haystack-Pipeline</h3>
+      <p id="gen-info" class="hint"></p>
+      <div class="gen-tabs">
+        <button data-file="components" class="gen-tab active">components</button>
+        <button data-file="pipeline" class="gen-tab">pipeline</button>
+        <button data-file="yaml" class="gen-tab" style="background: #0d9488; border-color: #0d9488;">Standard-YAML 🚀</button>
+      </div>
+      <textarea id="gen-code" rows="18" spellcheck="false"></textarea>
+      <div class="modal-actions">
+        <button id="gen-download">Datei herunterladen</button>
+        <button id="gen-close">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Großes Modal zum Bearbeiten von Python-Script / Python-Filter -->
+  <div id="code-modal" class="modal hidden">
+    <div class="modal-box code-modal-box">
+      <h3>Python-Code bearbeiten</h3>
+      <div id="code-modal-host"></div>
+    </div>
+  </div>
+
+  <!-- Modal für den Deployment Guide -->
+  <div id="deploy-modal" class="modal hidden">
+    <div class="modal-box" style="width: 850px; max-width: 95vw; display: flex; flex-direction: column; max-height: 90vh;">
+      <h3 style="margin: 0 0 4px; display: flex; align-items: center; gap: 8px;">
+        <span>🚀 On-Premise Deployment & Container-Runtime Guide</span>
+      </h3>
+      <p class="hint" style="margin-bottom: 12px;">Erfahren Sie, wie Sie diese Lasttest-Pipelines standardisiert, offline und in geschlossenen Infrastrukturen betreiben.</p>
+      
+      <div class="gen-tabs" style="margin-bottom: 8px;">
+        <button id="tab-btn-arch" class="gen-tab active">1. Architektur & Konzept</button>
+        <button id="tab-btn-fastapi" class="gen-tab">2. REST Engine (app.py)</button>
+        <button id="tab-btn-docker" class="gen-tab">3. Container (Dockerfile)</button>
+        <button id="tab-btn-standard" class="gen-tab">4. Standardisierte Formate</button>
+      </div>
+
+      <!-- Tab Content 1: Architektur & Konzept -->
+      <div id="tab-content-arch" class="deploy-tab-content" style="overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.6; padding-right: 8px;">
+        <h4 style="margin: 8px 0 4px; color: #2563eb;">System-Architektur &amp; Datenfluss</h4>
+        <pre style="background: #0f172a; color: #38bdf8; padding: 12px; border-radius: 8px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px; line-height: 1.4; overflow-x: auto; border: 1px solid #1e293b; margin-bottom: 16px;">
+               +----------------------------------------+
+               |   Low-Code Web Canvas (Client-Side)    |
+               |  - Visual Drag-and-Drop Node Editing   |
+               |  - Real-time Layout State Persistence  |
+               +-------------------+--------------------+
+                                   |
+                       [Exportiert Diagramm-JSON]
+                                   |
+                                   v
+               +-------------------+--------------------+
+               |   Helper Engine Runtime (server.ts)    |
+               |  - Übersetzt JSON in Python &amp; YAML      |
+               |  - Validiert Syntax der Komponenten    |
+               +---------+--------------------+---------+
+                         |                    |
+            (Generiert Python-Code)      (Generiert Standard-YAML)
+                         |                    |
+                         v                    v
+         +---------------+---------------+    +---------------------------+
+         | components.py |  pipeline.py  |    |       pipeline.yaml       |
+         | (Custom Logic)| (Loader/Graph)|    | (Standard deklarativer    |
+         +---------------+---------------+    |   Haystack-v2 Blueprint)  |
+                         |                    +-------------+-------------+
+                         v                                  |
+         +---------------+---------------+                  |
+         |     Container-Runtime Engine  |&lt;-----------------+
+         | - Geladen über FastAPI REST   | (Direkter Import ohne Python-Boilerplate)
+         | - Lokale LLMs via Ollama API  |
+         | - Lokale Protokolldateien     |
+         +-------------------------------+
+        </pre>
+
+        <h4 style="margin: 12px 0 4px; color: #2563eb;">Architecture Decision Records (ADRs)</h4>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+          <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+            <li><strong>ADR-0001: Frontend-First Canvas mit optionaler Helper-Runtime</strong><br/>
+              <span style="color:#64748b;">Entscheidung:</span> UI läuft komplett client-seitig, Austausch über standardisiertes JSON-Format. Generierung erfolgt über schlanke API-Runtime. (Status: <span style="color:#10b981; font-weight:bold;">Accepted</span>)</li>
+            <li><strong>ADR-0002: Offline- &amp; On-Premise-Fokus</strong><br/>
+              <span style="color:#64748b;">Entscheidung:</span> Alle Skripte/Stile lokal; voller Support für on-premise LLMs (z.B. Ollama) via anpassbarer Base-URLs. (Status: <span style="color:#10b981; font-weight:bold;">Accepted</span>)</li>
+            <li><strong>ADR-0003: Standardisierte YAML &amp; JSON-Serialisierung</strong><br/>
+              <span style="color:#64748b;">Entscheidung:</span> Generierung von echtem Haystack-v2 YAML für deklarative Deployments ohne Python-Verbindungs-Boilerplate. (Status: <span style="color:#10b981; font-weight:bold;">Accepted</span>)</li>
+            <li><strong>ADR-0004: Zeitfenster-basierter Fehler-Korrelator</strong><br/>
+              <span style="color:#64748b;">Entscheidung:</span> Filterung von Logs außerhalb definierter Testzeiträume vor LLM-Klassifizierung zur Token-Schonung. (Status: <span style="color:#10b981; font-weight:bold;">Accepted</span>)</li>
+          </ul>
+        </div>
+
+        <h4 style="margin: 8px 0 4px; color: #2563eb;">Was wird für das Deployment benötigt?</h4>
+        <p style="margin: 0 0 10px;">
+          Um eine mit diesem Builder modellierte Pipeline produktiv (z.B. on-premise oder in geschlossenen VPCs) zu deployen, werden genau drei Dinge benötigt:
+        </p>
+        <ul style="margin: 0 0 12px; padding-left: 20px;">
+          <li><strong>Pipeline Definition &amp; Custom Components:</strong> Die hier generierten Python-Dateien (z.B. <code>pipeline_components.py</code> und <code>pipeline_pipeline.py</code>).</li>
+          <li><strong>Standardisierte Bibliotheken:</strong> Die Core-Library <code>haystack-ai</code> (v2.x) sowie etwaige Zusatzpakete (z.B. <code>openai</code> für LLMs, <code>pandas</code> für CSV-Mengen).</li>
+          <li><strong>Eine API-Laufzeitumgebung (Runtime Engine):</strong> Ein kleiner REST- oder Message-Broker-Wrapper (z.B. mit FastAPI), der die Pipeline lädt, eingehende Trigger empfängt, sie ausführt und die Resultate zurückgibt.</li>
+        </ul>
+
+        <h4 style="margin: 12px 0 4px; color: #2563eb;">Betrieb ohne externe Cloud-Dienste (Strict On-Premise)</h4>
+        <p style="margin: 0 0 12px;">
+          Diese Applikation ist so konzipiert, dass alle Komponenten offline lauffähig sind. Anstelle von OpenAI können Sie für die LLM-Verarbeitung (z.B. <code>OpenAIGenerator</code>) lokale, on-premise gehostete Modelle über eine <strong>OpenAI-kompatible Schnittstelle</strong> ansprechen (z.B. über <em>LocalAI</em>, <em>vLLM</em> oder <em>Ollama</em>). Hinterlegen Sie einfach deren lokale IP-Adresse (z.B. <code>http://ollama-service.internal:11434/v1</code>) in den globalen Einstellungen.
+        </p>
+      </div>
+
+      <!-- Tab Content 2: REST Engine (app.py) -->
+      <div id="tab-content-fastapi" class="deploy-tab-content hidden" style="overflow-y: auto; flex: 1;">
+        <p class="hint" style="margin-bottom: 6px;">Dieser FastAPI-Dienst stellt Ihre generierte Pipeline als REST-Schnittstelle bereit:</p>
+        <textarea readonly style="width: 100%; height: 280px; font-family: monospace; font-size: 11px; background: #0f172a; color: #34d399; border: 1px solid #334155; border-radius: 6px; padding: 8px;">
+import os
+import logging
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Dict, Any
+
+# Importiert die automatisch generierte Pipeline aus dem "gen"-Ordner
+try:
+    from gen.pipeline_pipeline import build_pipeline
+except ImportError:
+    # Fallback falls direkt im Ordner ausgeführt
+    from pipeline_pipeline import build_pipeline
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("haystack-runtime")
+
+app = FastAPI(
+    title="Haystack Load-Test Pipeline Runtime",
+    description="Container-ready on-premise execution engine for load-test logs.",
+    version="1.0"
+)
+
+# Pipeline global beim Start initialisieren
+pipeline = build_pipeline()
+logger.info("Haystack Pipeline erfolgreich initialisiert!")
+
+class PipelineTriggerRequest(BaseModel):
+    # Optional: Ermöglicht die Übergabe dynamischer Laufzeit-Inputs an die Komponenten
+    inputs: Dict[str, Any] = {}
+
+@app.post("/run")
+async def run_pipeline(req: PipelineTriggerRequest):
+    """
+    Triggert die Ausführung der geladenen Pipeline.
+    Eignet sich hervorragend für Cronjobs, CI/CD-Pipelines oder Webhook-Integrationen.
+    """
+    try:
+        logger.info("Pipeline-Lauf gestartet...")
+        # Die Pipeline wird mit den übergebenen Inputs gestartet
+        result = pipeline.run(req.inputs)
+        logger.info("Pipeline-Lauf erfolgreich abgeschlossen.")
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"Fehler bei Pipeline-Lauf: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Pipeline-Ausführung gescheitert: {str(e)}")
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "components_count": len(pipeline.graph.nodes)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+</textarea>
+      </div>
+
+      <!-- Tab Content 3: Container (Dockerfile) -->
+      <div id="tab-content-docker" class="deploy-tab-content hidden" style="overflow-y: auto; flex: 1;">
+        <p class="hint" style="margin-bottom: 6px;">Dieses Dockerfile paketiert die FastAPI-Runtime sowie Ihre Pipelines in ein on-premise deploybares Image:</p>
+        <textarea readonly style="width: 100%; height: 280px; font-family: monospace; font-size: 11px; background: #0f172a; color: #fbbf24; border: 1px solid #334155; border-radius: 6px; padding: 8px;">
+# Verwendung eines schlanken, offiziellen Python-Images
+FROM python:3.11-slim
+
+# Arbeitsverzeichnis definieren
+WORKDIR /app
+
+# Systemabhängigkeiten für Python-Kompilierung installieren (falls nötig)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Abhängigkeiten kopieren und installieren
+# haystack-ai ist die Core-Bibliothek für v2 Pipelines
+RUN pip install --no-cache-dir \
+    haystack-ai \
+    fastapi \
+    uvicorn \
+    pydantic \
+    openai
+
+# Erzeuge benötigte Verzeichnisse für Logs und Resultate im Container
+RUN mkdir -p /var/log/nginx /metrics /results /app/gen
+
+# Kopiere die generierten Python-Skripte und die REST-Engine in den Container
+COPY ./gen/ /app/gen/
+COPY ./app.py /app/app.py
+
+# Exponiere den FastAPI Standard-Port
+EXPOSE 8000
+
+# Setze Umgebungsvariablen (können zur Laufzeit in Kubernetes / Docker-Compose überschrieben werden)
+ENV OPENAI_API_KEY="lokaler-schluessel-oder-dummy"
+ENV OPENAI_BASE_URL="http://ollama-service.internal:11434/v1"
+
+# Starte die FastAPI REST Runtime Engine
+CMD ["python", "app.py"]
+</textarea>
+      </div>
+
+      <!-- Tab Content 4: Standardisierte Formate -->
+      <div id="tab-content-standard" class="deploy-tab-content hidden" style="overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.6; padding-right: 8px;">
+        <h4 style="margin: 8px 0 4px; color: #2563eb;">Standardisierte YAML- und JSON-Serialisierung</h4>
+        <p style="margin: 0 0 10px;">
+          Wussten Sie schon? Haystack v2 verfügt über eine native, standardisierte Serialisierungs-Schnittstelle. Jede Pipeline kann komplett deklariert in YAML oder JSON abgespeichert und von jeder Haystack-Laufzeit geladen werden:
+        </p>
+        <pre style="background: #1e293b; color: #f3f4f6; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px; margin-bottom: 12px; overflow-x: auto;">
+# Pipeline in Standard-YAML exportieren (alles deklariert und serialisiert)
+yaml_definition = pipeline.dumps()
+with open("production_pipeline.yaml", "w") as f:
+    f.write(yaml_definition)
+
+# An einem anderen Server oder Container wieder standardisiert laden:
+from haystack import Pipeline
+loaded_pipeline = Pipeline.loads(yaml_definition)
+</pre>
+        <p style="margin: 0 0 4px;">
+          Dadurch entfällt das Schreiben von Python-Instanziierungscode im Zielsystem vollständig! Sie übergeben dem standardisierten Haystack-Container einfach nur die YAML-Spezifikation per ConfigMap oder Datei-Volume.
+        </p>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 12px;">
+        <button id="deploy-close" style="background: #4b5563; color: white; border: none;">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/registry.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "name": "lasttest-log-analyse",
+  "settings": {
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "${OPENAI_API_KEY}"
+  },
+  "nodes": [
+    {
+      "id": "ingest",
+      "type": "WebServerLogLoader",
+      "params": { "log_path": "/var/log/nginx/access.log", "format": "combined", "max_lines": 500000 }
+    },
+    {
+      "id": "prep",
+      "type": "LogParser",
+      "params": { "extract_fields": ["status", "latency_ms", "path", "method", "timestamp"] }
+    },
+    {
+      "id": "window",
+      "type": "TimeWindowFilter",
+      "params": {
+        "start": "2026-07-18T10:00:00",
+        "end": "2026-07-18T11:00:00",
+        "timestamp_field": "timestamp"
+      }
+    },
+    {
+      "id": "filter",
+      "type": "KeywordFilter",
+      "params": {
+        "keywords": ["fatal", "error", "ora-", "stacktrace"],
+        "case_sensitive": false
+      }
+    },
+    {
+      "id": "classify",
+      "type": "ErrorClassifier",
+      "params": {
+        "classes": [
+          "ora-.*:Datenbankfehler",
+          "stacktrace:Stacktrace",
+          "fatal:Fatal",
+          "error:Allgemeiner Fehler"
+        ],
+        "ok_label": "OK"
+      }
+    },
+    {
+      "id": "prompt",
+      "type": "PromptBuilder",
+      "params": {
+        "template": "Analysiere die folgenden klassifizierten Lasttest-Fehler und fasse Auffälligkeiten sowie Handlungsempfehlungen zusammen:\n\n{% for d in documents %}{{ d.content }}\n{% endfor %}",
+        "required_variables": ["documents"]
+      }
+    },
+    {
+      "id": "llm",
+      "type": "OpenAIGenerator",
+      "params": { "model": "gpt-4o-mini" }
+    },
+    {
+      "id": "report",
+      "type": "ResultExporter",
+      "params": { "output_path": "analysis_result.json", "include_raw": false }
+    }
+  ],
+  "connections": [
+    { "from": "ingest", "from_port": "documents", "to": "prep", "to_port": "documents" },
+    { "from": "prep", "from_port": "documents", "to": "window", "to_port": "documents" },
+    { "from": "window", "from_port": "documents", "to": "filter", "to_port": "documents" },
+    { "from": "filter", "from_port": "matches", "to": "classify", "to_port": "matches" },
+    { "from": "classify", "from_port": "classified", "to": "prompt", "to_port": "documents" },
+    { "from": "prompt", "from_port": "prompt", "to": "llm", "to_port": "prompt" },
+    { "from": "classify", "from_port": "summary", "to": "report", "to_port": "summary" },
+    { "from": "llm", "from_port": "replies", "to": "report", "to_port": "replies" }
+  ]
+}

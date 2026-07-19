@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "name": "Oracle AWR Diff Analyse Pipeline",
+  "settings": {
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "${OPENAI_API_KEY}"
+  },
+  "nodes": [
+    {
+      "id": "awr_loader",
+      "type": "OracleAWRDiffLoader",
+      "params": {
+        "awr_path": "/reports/awr_diff.html"
+      }
+    },
+    {
+      "id": "awr_parser",
+      "type": "OracleAWRDiffParser",
+      "params": {
+        "max_wait_events": 5,
+        "max_sql_queries": 10
+      }
+    },
+    {
+      "id": "prompt_builder",
+      "type": "PromptBuilder",
+      "params": {
+        "template": "Du bist ein Oracle Database Performance Tuning Experte. Analysiere den folgenden extrahierten Oracle AWR (Automatic Workload Repository) Diff-Report für zwei Vergleichszeiträume (Base vs. Comparison period). Identifiziere Leistungsengpässe, vergleiche die Lastprofile, bewerte die kritischsten Wait Events (z.B. log file sync, sequential reads) und schlage konkrete Tuning-Maßnahmen für die Top-SQL-Statements vor:\n\n{% for d in documents %}{{ d.content }}\n{% endfor %}",
+        "required_variables": ["documents"]
+      }
+    },
+    {
+      "id": "llm_analyzer",
+      "type": "OpenAIGenerator",
+      "params": {
+        "model": "gpt-4o-mini"
+      }
+    },
+    {
+      "id": "exporter",
+      "type": "ResultExporter",
+      "params": {
+        "output_path": "awr_diff_analysis_report.json",
+        "include_raw": true
+      }
+    }
+  ],
+  "connections": [
+    { "from": "awr_loader", "from_port": "documents", "to": "awr_parser", "to_port": "documents" },
+    { "from": "awr_parser", "from_port": "documents", "to": "prompt_builder", "to_port": "documents" },
+    { "from": "prompt_builder", "from_port": "prompt", "to": "llm_analyzer", "to_port": "prompt" },
+    { "from": "awr_parser", "from_port": "documents", "to": "exporter", "to_port": "documents" },
+    { "from": "llm_analyzer", "from_port": "replies", "to": "exporter", "to_port": "replies" }
+  ]
+}

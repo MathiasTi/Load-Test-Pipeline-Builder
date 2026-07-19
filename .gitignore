@@ -1,0 +1,9 @@
+# Generierter Pipeline-Code (vom Parser/server erzeugt, regenerierbar)
+gen/
+
+# Python-Cache
+__pycache__/
+*.pyc
+
+# OS-Artefakte
+.DS_Store

@@ -1,0 +1,19 @@
+{
+  "name": "haystack-load-test-pipeline-builder",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "echo 'No build step required'",
+    "lint": "echo 'No lint step required'",
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "@types/node": "^20.14.9",
+    "@types/express": "^4.17.21"
+  }
+}

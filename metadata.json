@@ -1,0 +1,6 @@
+{
+  "name": "Haystack Load-Test Pipeline Builder",
+  "description": "A low-code builder for Haystack load-test pipelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

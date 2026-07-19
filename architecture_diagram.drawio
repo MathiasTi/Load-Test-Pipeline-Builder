@@ -1,0 +1,94 @@
+<mxfile host="65bd71144e">
+  <diagram id="HaystackArchitecture" name="Haystack Load-Test Pipeline Builder Architecture">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <!-- Standard Layers -->
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- 1. Low-Code Visual UI Canvas (Web Browser) -->
+        <mxCell id="ui" value="Low-Code Web Canvas&lt;br&gt;&lt;b&gt;(Client-Side UI / JS)&lt;/b&gt;&lt;br&gt;- Drag-and-Drop Node Grid&lt;br&gt;- Instant Connection Validation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6366f1;strokeColor=#4f46e5;fontColor=#ffffff;fontFamily=Helvetica;fontSize=12;align=center;" vertex="1" parent="1">
+          <mxGeometry x="280" y="40" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- 2. Diagram JSON (Intermediate State) -->
+        <mxCell id="json" value="&lt;b&gt;Diagramm JSON&lt;/b&gt;&lt;br&gt;Schnittstellen-Datenstruktur&lt;br&gt;(Nodes, Ports, Parameter)" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f1f5f9;strokeColor=#cbd5e1;fontColor=#334155;fontFamily=Helvetica;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="300" y="190" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- 3. Helper Engine Runtime (server.ts / Express) -->
+        <mxCell id="server" value="Helper Engine Runtime&lt;br&gt;&lt;b&gt;(server.ts / Express API)&lt;/b&gt;&lt;br&gt;- Übersetzt JSON in Python/YAML&lt;br&gt;- Führt Vorab-Kompilierung aus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f59e0b;strokeColor=#d97706;fontColor=#ffffff;fontFamily=Helvetica;fontSize=12;align=center;" vertex="1" parent="1">
+          <mxGeometry x="280" y="310" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- 4. pipeline_components.py -->
+        <mxCell id="components_py" value="&lt;b&gt;pipeline_components.py&lt;/b&gt;&lt;br&gt;Custom Log-Parser &amp;amp;&lt;br&gt;AWR-Preprocessors" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8fafc;strokeColor=#e2e8f0;fontColor=#0f172a;fontFamily=Helvetica;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="100" y="460" width="170" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 5. pipeline_pipeline.py -->
+        <mxCell id="pipeline_py" value="&lt;b&gt;pipeline_pipeline.py&lt;/b&gt;&lt;br&gt;Python-Skript zur&lt;br&gt;Graph-Instanziierung" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8fafc;strokeColor=#e2e8f0;fontColor=#0f172a;fontFamily=Helvetica;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="315" y="460" width="170" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 6. pipeline_pipeline.yaml -->
+        <mxCell id="pipeline_yaml" value="&lt;b&gt;pipeline_pipeline.yaml&lt;/b&gt;&lt;br&gt;Deklarativer, standardkonformer&lt;br&gt;Haystack-v2 Blueprint" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8fafc;strokeColor=#e2e8f0;fontColor=#0f172a;fontFamily=Helvetica;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="530" y="460" width="170" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- 7. Container Runtime Engine (FastAPI Wrapper) -->
+        <mxCell id="runtime" value="Container Runtime Engine&lt;br&gt;&lt;b&gt;(FastAPI REST Wrapper)&lt;/b&gt;&lt;br&gt;- Empfängt Analysetriggers&lt;br&gt;- Lädt &amp;amp; führt Pipeline aus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10b981;strokeColor=#059669;fontColor=#ffffff;fontFamily=Helvetica;fontSize=12;align=center;" vertex="1" parent="1">
+          <mxGeometry x="270" y="610" width="260" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- 8. Local LLM Service (Ollama / LocalAI) -->
+        <mxCell id="ollama" value="Lokale LLM API&lt;br&gt;&lt;b&gt;(Ollama / LocalAI)&lt;/b&gt;&lt;br&gt;- On-Premise Llama-3&lt;br&gt;- 100% datenschutzkonform" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ec4899;strokeColor=#db2777;fontColor=#ffffff;fontFamily=Helvetica;fontSize=11;align=center;" vertex="1" parent="1">
+          <mxGeometry x="600" y="625" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Connections / Edges -->
+        <!-- UI -> JSON -->
+        <mxCell id="edge1" value="Exportiert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#4f46e5;strokeWidth=2;fontColor=#4f46e5;fontSize=11;" edge="1" parent="1" source="ui" target="json">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- JSON -> Server -->
+        <mxCell id="edge2" value="Parst JSON-Modell" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#4f46e5;strokeWidth=2;fontColor=#4f46e5;fontSize=11;" edge="1" parent="1" source="json" target="server">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server -> Components Py -->
+        <mxCell id="edge3" value="Generiert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;" edge="1" parent="1" source="server" target="components_py">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server -> Pipeline Py -->
+        <mxCell id="edge4" value="Generiert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;" edge="1" parent="1" source="server" target="pipeline_py">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Server -> Pipeline Yaml -->
+        <mxCell id="edge5" value="Generiert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;" edge="1" parent="1" source="server" target="pipeline_yaml">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Code imports -> Runtime -->
+        <mxCell id="edge6" value="Wird importiert in" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0.9;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;strokeColor=#059669;strokeWidth=1.5;fontColor=#059669;fontSize=10;" edge="1" parent="1" source="pipeline_py" target="runtime">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="400" y="550" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Yaml -> Runtime (Direct Import) -->
+        <mxCell id="edge7" value="Liest deklarativ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0.9;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;strokeColor=#059669;strokeWidth=1.5;fontColor=#059669;fontSize=10;" edge="1" parent="1" source="pipeline_yaml" target="runtime">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Runtime -> Ollama -->
+        <mxCell id="edge8" value="Lokale LLM REST-Anfragen" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#059669;strokeWidth=2;fontColor=#059669;fontSize=11;" edge="1" parent="1" source="runtime" target="ollama">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
