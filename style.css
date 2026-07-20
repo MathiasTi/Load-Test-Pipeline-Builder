@@ -88,7 +88,11 @@ header h1 {
   font-size: 13px;
   outline: none;
   transition: all 0.15s ease;
-  width: 200px;
+  width: 240px;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .name-field input:focus {
@@ -143,6 +147,14 @@ header h1 {
 
 .toolbar button:active {
   transform: translateY(0);
+}
+
+.toolbar button:disabled,
+.toolbar button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
 }
 
 .status {
@@ -247,10 +259,10 @@ main {
 
 /* Accent lines based on category types */
 .palette-group[data-group="DataSource"] .pal-item::before { background: #10b981; }
-.palette-group[data-group="Processing"] .pal-item::before { background: #3b82f6; }
-.palette-group[data-group="Analysis"] .pal-item::before { background: #8b5cf6; }
+.palette-group[data-group="Processing"] .pal-item::before { background: #0ea5e9; }
+.palette-group[data-group="Analysis"] .pal-item::before { background: #3b82f6; }
 .palette-group[data-group="Output"] .pal-item::before { background: #f59e0b; }
-.palette-group[data-group="Generic"] .pal-item::before { background: #14b8a6; }
+.palette-group[data-group="Generic"] .pal-item::before { background: #8b5cf6; }
 
 .pal-item:hover {
   border-color: #cbd5e1;
@@ -321,6 +333,15 @@ main {
   stroke: #f43f5e !important;
   stroke-width: 5px;
   filter: drop-shadow(0 2px 6px rgba(244, 63, 94, 0.5));
+}
+
+.edges .snap-guideline {
+  stroke: #6366f1;
+  stroke-width: 1.5px;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(99, 102, 241, 0.4));
+  pointer-events: none;
 }
 
 .zoom-controls {
@@ -405,6 +426,11 @@ main {
   transform: scale(1.01);
 }
 
+.node.invalid {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25), 0 4px 20px rgba(239, 68, 68, 0.1);
+}
+
 .node-head {
   padding: 8px 12px;
   border-radius: 11px 11px 0 0;
@@ -419,21 +445,54 @@ main {
   color: #ffffff;
 }
 
-/* Category-based node heading styles */
-.node[data-cat="DataSource"] { border-color: #a7f3d0; }
-.node[data-cat="DataSource"] .node-head { background: #10b981; }
+.node-head span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 8px;
+}
 
-.node[data-cat="Processing"] { border-color: #bfdbfe; }
-.node[data-cat="Processing"] .node-head { background: #3b82f6; }
+/* Category-based node heading and background styles */
+.node[data-cat="DataSource"] {
+  border-color: #10b981;
+  background-color: #f0fdf4; /* Soft green - Retrievers/Loaders */
+}
+.node[data-cat="DataSource"] .node-head {
+  background: #10b981;
+}
 
-.node[data-cat="Analysis"] { border-color: #ddd6fe; }
-.node[data-cat="Analysis"] .node-head { background: #8b5cf6; }
+.node[data-cat="Processing"] {
+  border-color: #0ea5e9;
+  background-color: #f0f9ff; /* Soft cyan - Processing/Parsers */
+}
+.node[data-cat="Processing"] .node-head {
+  background: #0ea5e9;
+}
 
-.node[data-cat="Output"] { border-color: #fde68a; }
-.node[data-cat="Output"] .node-head { background: #f59e0b; }
+.node[data-cat="Analysis"] {
+  border-color: #3b82f6;
+  background-color: #eff6ff; /* Soft blue - Generators/LLM */
+}
+.node[data-cat="Analysis"] .node-head {
+  background: #3b82f6;
+}
 
-.node[data-cat="Generic"] { border-color: #99f6e4; }
-.node[data-cat="Generic"] .node-head { background: #14b8a6; }
+.node[data-cat="Output"] {
+  border-color: #f59e0b;
+  background-color: #fffbeb; /* Soft amber - Exporters */
+}
+.node[data-cat="Output"] .node-head {
+  background: #f59e0b;
+}
+
+.node[data-cat="Generic"] {
+  border-color: #8b5cf6;
+  background-color: #faf5ff; /* Soft purple - Custom Python Script */
+}
+.node[data-cat="Generic"] .node-head {
+  background: #8b5cf6;
+}
 
 .node-head .del {
   cursor: pointer;
@@ -454,7 +513,7 @@ main {
   justify-content: space-between;
   padding: 8px 10px;
   gap: 12px;
-  background: #ffffff;
+  background: transparent;
   border-radius: 0 0 11px 11px;
 }
 
@@ -669,6 +728,8 @@ main {
   gap: 4px;
   margin: 12px 0 6px;
   border-bottom: 2px solid #e2e8f0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .gen-tab {
@@ -682,6 +743,11 @@ main {
   color: #64748b;
   margin-bottom: -2px;
   transition: all 0.15s ease;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .gen-tab:hover {

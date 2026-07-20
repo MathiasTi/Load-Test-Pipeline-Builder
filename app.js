@@ -34,6 +34,94 @@ const APP = {
 
 const MIN_ZOOM = 0.2, MAX_ZOOM = 2.5;
 
+/* ---------------------------------------------------------------- Undo / Redo & Autosave */
+const UNDO_STACK = [];
+const REDO_STACK = [];
+const MAX_STACK_SIZE = 50;
+let pushStateTimeout = null;
+const AUTOSAVE_KEY = "haystack_pipeline_builder_autosave";
+
+function saveToLocalStorage() {
+  try {
+    const model = toModel();
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(model));
+  } catch (err) {
+    console.error("Autosave to localStorage failed:", err);
+  }
+}
+
+function pushState() {
+  const state = JSON.stringify(toModel());
+  if (UNDO_STACK.length > 0 && UNDO_STACK[UNDO_STACK.length - 1] === state) {
+    return;
+  }
+  UNDO_STACK.push(state);
+  if (UNDO_STACK.length > MAX_STACK_SIZE) {
+    UNDO_STACK.shift();
+  }
+  REDO_STACK.length = 0;
+  updateUndoRedoButtons();
+  saveToLocalStorage();
+}
+
+function pushStateDebounced() {
+  if (pushStateTimeout) clearTimeout(pushStateTimeout);
+  pushStateTimeout = setTimeout(() => {
+    pushState();
+  }, 400);
+}
+
+function undo() {
+  if (UNDO_STACK.length <= 1) return;
+  const currentState = UNDO_STACK.pop();
+  REDO_STACK.push(currentState);
+  
+  const prevState = UNDO_STACK[UNDO_STACK.length - 1];
+  try {
+    const model = JSON.parse(prevState);
+    const selectedBefore = APP.selected;
+    fromModel(model);
+    if (selectedBefore && APP.nodes.some(n => n.id === selectedBefore)) {
+      selectNode(selectedBefore);
+    }
+    saveToLocalStorage();
+  } catch (err) {
+    console.error("Undo failed:", err);
+  }
+  updateUndoRedoButtons();
+}
+
+function redo() {
+  if (REDO_STACK.length === 0) return;
+  const nextState = REDO_STACK.pop();
+  UNDO_STACK.push(nextState);
+  try {
+    const model = JSON.parse(nextState);
+    const selectedBefore = APP.selected;
+    fromModel(model);
+    if (selectedBefore && APP.nodes.some(n => n.id === selectedBefore)) {
+      selectNode(selectedBefore);
+    }
+    saveToLocalStorage();
+  } catch (err) {
+    console.error("Redo failed:", err);
+  }
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  const undoBtn = document.getElementById("btn-undo");
+  const redoBtn = document.getElementById("btn-redo");
+  if (undoBtn) {
+    const canUndo = UNDO_STACK.length > 1;
+    undoBtn.disabled = !canUndo;
+  }
+  if (redoBtn) {
+    const canRedo = REDO_STACK.length > 0;
+    redoBtn.disabled = !canRedo;
+  }
+}
+
 function applyTransform() {
   const vp = document.getElementById("viewport");
   vp.style.transform = `translate(${APP.pan.x}px, ${APP.pan.y}px) scale(${APP.zoom})`;
@@ -84,6 +172,7 @@ canvas.addEventListener("drop", (e) => {
   if (!type) return;
   const p = clientToLocal(e.clientX, e.clientY);
   addNode(type, p.x - 100, p.y - 20); // grob zentriert auf Cursor
+  pushState();
 });
 
 function addNode(type, x, y, id, params) {
@@ -157,6 +246,7 @@ function deleteNode(id) {
   document.querySelector(`.node[data-id="${id}"]`)?.remove();
   renderEdges();
   renderInspector();
+  pushState();
 }
 
 /* ---------------------------------------------------------------- Move */
@@ -165,14 +255,162 @@ function startMove(e, node, el) {
   e.preventDefault();
   const startX = e.clientX, startY = e.clientY;
   const origX = node.x, origY = node.y;
+  let moved = false;
+
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+
+  const otherNodes = [];
+  APP.nodes.forEach(n => {
+    if (n.id === node.id) return;
+    const otherEl = document.querySelector(`.node[data-id="${n.id}"]`);
+    if (otherEl) {
+      otherNodes.push({
+        id: n.id,
+        x: n.x,
+        y: n.y,
+        w: otherEl.offsetWidth,
+        h: otherEl.offsetHeight,
+        cx: n.x + otherEl.offsetWidth / 2,
+        cy: n.y + otherEl.offsetHeight / 2
+      });
+    }
+  });
+
+  const SNAP_THRESHOLD = 12;
+
   function mv(ev) {
-    node.x = origX + (ev.clientX - startX) / APP.zoom;
-    node.y = origY + (ev.clientY - startY) / APP.zoom;
+    const dx = (ev.clientX - startX) / APP.zoom;
+    const dy = (ev.clientY - startY) / APP.zoom;
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+      moved = true;
+    }
+
+    let targetX = origX + dx;
+    let targetY = origY + dy;
+
+    let snappedX = null;
+    let snapLinesX = [];
+    let minDiffX = SNAP_THRESHOLD;
+
+    otherNodes.forEach(other => {
+      // 1. Links-auf-Links Ausrichtung
+      const diffL2L = Math.abs(targetX - other.x);
+      if (diffL2L < minDiffX) {
+        minDiffX = diffL2L;
+        snappedX = other.x;
+        snapLinesX = [{
+          x1: other.x,
+          y1: Math.min(targetY, other.y) - 30,
+          x2: other.x,
+          y2: Math.max(targetY + h, other.y + other.h) + 30
+        }];
+      }
+
+      // 2. Zentrum-auf-Zentrum Ausrichtung
+      const diffC2C = Math.abs((targetX + w / 2) - other.cx);
+      if (diffC2C < minDiffX) {
+        minDiffX = diffC2C;
+        snappedX = other.cx - w / 2;
+        snapLinesX = [{
+          x1: other.cx,
+          y1: Math.min(targetY, other.y) - 30,
+          x2: other.cx,
+          y2: Math.max(targetY + h, other.y + other.h) + 30
+        }];
+      }
+
+      // 3. Rechts-auf-Rechts Ausrichtung
+      const diffR2R = Math.abs((targetX + w) - (other.x + other.w));
+      if (diffR2R < minDiffX) {
+        minDiffX = diffR2R;
+        snappedX = (other.x + other.w) - w;
+        snapLinesX = [{
+          x1: other.x + other.w,
+          y1: Math.min(targetY, other.y) - 30,
+          x2: other.x + other.w,
+          y2: Math.max(targetY + h, other.y + other.h) + 30
+        }];
+      }
+    });
+
+    let snappedY = null;
+    let snapLinesY = [];
+    let minDiffY = SNAP_THRESHOLD;
+
+    otherNodes.forEach(other => {
+      // 1. Oben-auf-Oben Ausrichtung
+      const diffT2T = Math.abs(targetY - other.y);
+      if (diffT2T < minDiffY) {
+        minDiffY = diffT2T;
+        snappedY = other.y;
+        snapLinesY = [{
+          x1: Math.min(targetX, other.x) - 30,
+          y1: other.y,
+          x2: Math.max(targetX + w, other.x + other.w) + 30,
+          y2: other.y
+        }];
+      }
+
+      // 2. Zentrum-auf-Zentrum Ausrichtung
+      const diffC2C = Math.abs((targetY + h / 2) - other.cy);
+      if (diffC2C < minDiffY) {
+        minDiffY = diffC2C;
+        snappedY = other.cy - h / 2;
+        snapLinesY = [{
+          x1: Math.min(targetX, other.x) - 30,
+          y1: other.cy,
+          x2: Math.max(targetX + w, other.x + other.w) + 30,
+          y2: other.cy
+        }];
+      }
+
+      // 3. Unten-auf-Unten Ausrichtung
+      const diffB2B = Math.abs((targetY + h) - (other.y + other.h));
+      if (diffB2B < minDiffY) {
+        minDiffY = diffB2B;
+        snappedY = (other.y + other.h) - h;
+        snapLinesY = [{
+          x1: Math.min(targetX, other.x) - 30,
+          y1: other.y + other.h,
+          x2: Math.max(targetX + w, other.x + other.w) + 30,
+          y2: other.y + other.h
+        }];
+      }
+    });
+
+    if (snappedX !== null) {
+      targetX = snappedX;
+    }
+    if (snappedY !== null) {
+      targetY = snappedY;
+    }
+
+    node.x = targetX;
+    node.y = targetY;
     el.style.left = node.x + "px";
     el.style.top = node.y + "px";
+
+    APP.snapLines = [];
+    if (snappedX !== null) {
+      APP.snapLines.push(...snapLinesX);
+    }
+    if (snappedY !== null) {
+      APP.snapLines.push(...snapLinesY);
+    }
+
     renderEdges();
   }
-  function up() { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); }
+
+  function up() {
+    document.removeEventListener("mousemove", mv);
+    document.removeEventListener("mouseup", up);
+    APP.snapLines = [];
+    renderEdges();
+    if (moved) {
+      pushState();
+    }
+  }
   document.addEventListener("mousemove", mv);
   document.addEventListener("mouseup", up);
 }
@@ -216,6 +454,7 @@ function startEdge(e, node, portEl) {
         const to = dir === "in" ? node.id : tNode.dataset.id;
         const toPort = dir === "in" ? portName : tPort;
         addConnection(from, fromPort, to, toPort);
+        pushState();
       }
     }
     svg.innerHTML = "";
@@ -244,6 +483,13 @@ function renderEdges() {
     if (!a || !b) return;
     paths += `<path d="M ${a.x} ${a.y} C ${(a.x+b.x)/2} ${a.y}, ${(a.x+b.x)/2} ${b.y}, ${b.x} ${b.y}" data-idx="${idx}" title="Verbindung löschen (Klicken)"/>`;
   });
+
+  if (APP.snapLines && APP.snapLines.length > 0) {
+    APP.snapLines.forEach(line => {
+      paths += `<line class="snap-guideline" x1="${line.x1}" y1="${line.y1}" x2="${line.x2}" y2="${line.y2}" />`;
+    });
+  }
+
   svg.innerHTML = paths;
 
   // Click handler to delete connection easily
@@ -255,6 +501,7 @@ function renderEdges() {
         if (confirm("Möchtest du diese Verbindung löschen?")) {
           APP.connections.splice(idx, 1);
           renderEdges();
+          pushState();
         }
       }
     });
@@ -367,6 +614,7 @@ function renderInspector() {
         .map(t => t.textContent.trim())
         .filter(Boolean);
       node.params[paramName] = currentList;
+      pushState();
     }
 
     chipsContainer.addEventListener("click", (ev) => {
@@ -415,6 +663,7 @@ function renderInspector() {
         }
       });
       node.params[paramName] = list;
+      pushStateDebounced();
     }
 
     rowsContainer.addEventListener("input", saveAndRefresh);
@@ -423,6 +672,7 @@ function renderInspector() {
       if (ev.target.classList.contains("kv-del-btn")) {
         ev.target.closest(".kv-row").remove();
         saveAndRefresh();
+        pushState();
       }
     });
 
@@ -437,6 +687,8 @@ function renderInspector() {
       `;
       rowsContainer.appendChild(row);
       row.querySelector(".kv-key").focus();
+      saveAndRefresh();
+      pushState();
     });
   });
 
@@ -455,6 +707,7 @@ function updateParam(node, ctl) {
     v = v.split("\n").map((s) => s.trim()).filter(Boolean);
   }
   node.params[name] = v;
+  pushStateDebounced();
 }
 
 /* ---------------------------------------------------------------- JSON */
@@ -482,7 +735,11 @@ function fromModel(model) {
   clearCanvas();
   // Name + globale Einstellungen übernehmen
   APP.name = model.name || DEFAULT_NAME;
-  document.getElementById("pipeline-name").value = APP.name;
+  const plNameInput = document.getElementById("pipeline-name");
+  if (plNameInput) {
+    plNameInput.value = APP.name;
+    plNameInput.title = APP.name;
+  }
   if (model.settings) APP.settings = { ...APP.settings, ...model.settings };
   // seq anpassen
   model.nodes.forEach((n) => {
@@ -514,21 +771,102 @@ function clearCanvas() {
 async function validate() {
   const errors = [];
   const ids = new Set(APP.nodes.map((n) => n.id));
-  if (APP.nodes.length === 0) errors.push("Keine Komponenten vorhanden.");
+  
+  // Clear any existing invalid styling
+  document.querySelectorAll(".node").forEach((n) => n.classList.remove("invalid"));
+  const invalidNodeIds = new Set();
+
+  if (APP.nodes.length === 0) {
+    errors.push("Keine Komponenten vorhanden.");
+  }
+
+  // Required parameters check
   APP.nodes.forEach((n) => {
     const def = REGISTRY_BY_TYPE[n.type];
     (def.params || []).forEach((f) => {
-      if (f.required && (n.params[f.name] === undefined || n.params[f.name] === ""))
+      if (f.required && (n.params[f.name] === undefined || n.params[f.name] === "")) {
         errors.push(`${def.label} (${n.id}): Pflichtparameter "${f.label}" fehlt.`);
+        invalidNodeIds.add(n.id);
+      }
     });
   });
+
+  // Connections endpoints and ports existence check
   APP.connections.forEach((c) => {
-    if (!ids.has(c.from) || !ids.has(c.to)) errors.push(`Verbindung zeigt auf nicht existierende Node.`);
-    const fromDef = REGISTRY_BY_TYPE[APP.nodes.find((n) => n.id === c.from)?.type];
-    if (fromDef && !(fromDef.outputs || []).some((o) => o.name === c.from_port))
-      errors.push(`Ausgangsport "${c.from_port}" existiert nicht an ${c.from}.`);
+    if (!ids.has(c.from)) {
+      errors.push(`Verbindung zeigt von nicht existierender Node "${c.from}".`);
+    } else {
+      const fromDef = REGISTRY_BY_TYPE[APP.nodes.find((n) => n.id === c.from)?.type];
+      if (fromDef && !(fromDef.outputs || []).some((o) => o.name === c.from_port)) {
+        errors.push(`Ausgangsport "${c.from_port}" existiert nicht an ${c.from}.`);
+        invalidNodeIds.add(c.from);
+      }
+    }
+    if (!ids.has(c.to)) {
+      errors.push(`Verbindung zeigt auf nicht existierende Node.`);
+    } else {
+      const toDef = REGISTRY_BY_TYPE[APP.nodes.find((n) => n.id === c.to)?.type];
+      if (toDef && !(toDef.inputs || []).some((i) => i.name === c.to_port)) {
+        errors.push(`Eingangsport "${c.to_port}" existiert nicht an ${c.to}.`);
+        invalidNodeIds.add(c.to);
+      }
+    }
   });
-  // mind. eine Datenquelle + eine Ausgabe? (weich)
+
+  // Client-side cycle detection
+  const adj = {};
+  APP.nodes.forEach(n => adj[n.id] = []);
+  APP.connections.forEach(c => {
+    if (adj[c.from] && adj[c.to]) adj[c.from].push(c.to);
+  });
+  const visited = {};
+  const cycleNodes = new Set();
+  let hasClientCycle = false;
+  function dfs(u, path) {
+    visited[u] = 1;
+    path.push(u);
+    for (const v of adj[u] || []) {
+      if (visited[v] === 1) {
+        hasClientCycle = true;
+        const idx = path.indexOf(v);
+        if (idx !== -1) {
+          path.slice(idx).forEach(nodeId => cycleNodes.add(nodeId));
+        }
+      } else if (!visited[v]) {
+        dfs(v, path);
+      }
+    }
+    path.pop();
+    visited[u] = 2;
+  }
+  APP.nodes.forEach(n => {
+    if (!visited[n.id]) {
+      dfs(n.id, []);
+    }
+  });
+  if (hasClientCycle) {
+    errors.push(`Zyklus-Warnung: Zyklus erkannt (${Array.from(cycleNodes).join(" -> ")})`);
+    cycleNodes.forEach(id => invalidNodeIds.add(id));
+  }
+
+  // Client-side isolated nodes detection
+  const connectedNodeIds = new Set();
+  APP.connections.forEach(c => {
+    connectedNodeIds.add(c.from);
+    connectedNodeIds.add(c.to);
+  });
+  const isolated = [];
+  APP.nodes.forEach(n => {
+    if (!connectedNodeIds.has(n.id)) {
+      isolated.push(`${n.type} (${n.id})`);
+      invalidNodeIds.add(n.id);
+    }
+  });
+  if (isolated.length > 0) {
+    errors.push(`Isolierte Knoten: ${isolated.join(", ")}`);
+  }
+
+  // Soft check for Source and Output types
   const hasSource = APP.nodes.some((n) => (COMPONENT_REGISTRY.DataSource || []).some((d) => d.type === n.type));
   const hasOut = APP.nodes.some((n) => (COMPONENT_REGISTRY.Output || []).some((d) => d.type === n.type));
   if (!hasSource) errors.push("Warnung: keine Datenquelle definiert.");
@@ -538,9 +876,15 @@ async function validate() {
   status.textContent = "Validierung läuft...";
   status.className = "status";
 
-  if (errors.filter(e => !e.startsWith("Warnung")).length > 0) {
+  // Critical client-side block (excluding warnings and isolated notes for server pass)
+  const criticalLocal = errors.filter(e => !e.startsWith("Warnung") && !e.startsWith("Isolierte") && !e.startsWith("Zyklus"));
+  if (criticalLocal.length > 0) {
     status.textContent = "✗ " + errors.slice(0, 3).join(" | ") + (errors.length > 3 ? ` (+${errors.length - 3} weitere)` : "");
     status.className = "status err";
+    invalidNodeIds.forEach(id => {
+      const el = document.querySelector(`.node[data-id="${id}"]`);
+      if (el) el.classList.add("invalid");
+    });
     return errors;
   }
 
@@ -555,32 +899,108 @@ async function validate() {
     const data = await resp.json();
 
     if (data.graph && data.graph.has_cycle) {
-      errors.push(`Zyklus-Warnung: Zyklus erkannt (${data.graph.cycle_path.join(" -> ")})`);
-    }
-    if (data.graph && data.graph.isolated_nodes && data.graph.isolated_nodes.length > 0) {
-      errors.push(`Isolierte Knoten: ${data.graph.isolated_nodes.join(", ")}`);
+      if (!hasClientCycle) {
+        errors.push(`Zyklus-Warnung: Zyklus erkannt (${data.graph.cycle_path.join(" -> ")})`);
+      }
+      if (data.graph.cycle_path) {
+        data.graph.cycle_path.forEach(id => invalidNodeIds.add(id));
+      }
     }
     if (data.python && !data.python.components_compiles) {
       errors.push(`Python Syntaxfehler: ${data.python.components_error || "Fehler in benutzerdefiniertem Code"}`);
+      APP.nodes.forEach(n => {
+        if (data.python.components_error && data.python.components_error.includes(n.type)) {
+          invalidNodeIds.add(n.id);
+        }
+      });
     }
     if (data.python && !data.python.pipeline_compiles) {
       errors.push(`Pipeline-Struktur Syntaxfehler: ${data.python.pipeline_error || "Fehler in Pipeline-Struktur"}`);
     }
   } catch (e) {
-    // Falls Server nicht antwortet (z.B. Offline-Betrieb) ist das kein Blocker für Client-Validierung
+    // Server validation unreachability is just a notice
     errors.push("Hinweis: Server-Validierung nicht erreichbar.");
   }
 
+  // Apply visual error classes
+  invalidNodeIds.forEach(id => {
+    const el = document.querySelector(`.node[data-id="${id}"]`);
+    if (el) el.classList.add("invalid");
+  });
+
+  const hasCritical = errors.some(e => !e.startsWith("Warnung") && !e.startsWith("Hinweis") && !e.startsWith("Isolierte") && !e.startsWith("Zyklus-Warnung"));
   if (errors.length === 0) {
     status.textContent = "✓ Validiert – Keine Zyklen, Python-Code kompiliert erfolgreich.";
     status.className = "status ok";
   } else {
-    const hasCritical = errors.some(e => !e.startsWith("Warnung") && !e.startsWith("Hinweis") && !e.startsWith("Isolierte"));
     status.textContent = (hasCritical ? "✗ " : "⚠️ ") + errors.slice(0, 3).join(" | ") + (errors.length > 3 ? ` (+${errors.length - 3} weitere)` : "");
     status.className = hasCritical ? "status err" : "status ok";
   }
 
   return errors;
+}
+
+/* ---------------------------------------------------------------- Auto Layout */
+function autoLayout() {
+  if (APP.nodes.length === 0) return;
+
+  const ranks = {};
+  APP.nodes.forEach(n => ranks[n.id] = 0);
+
+  // Relax ranks to find topological columns
+  const N = APP.nodes.length;
+  for (let iter = 0; iter < N; iter++) {
+    let changed = false;
+    APP.connections.forEach(c => {
+      const fromNode = APP.nodes.find(n => n.id === c.from);
+      const toNode = APP.nodes.find(n => n.id === c.to);
+      if (fromNode && toNode) {
+        if (ranks[c.to] < ranks[c.from] + 1) {
+          ranks[c.to] = ranks[c.from] + 1;
+          changed = true;
+        }
+      }
+    });
+    if (!changed) break;
+  }
+
+  // Group nodes by their calculated ranks
+  const columns = {};
+  APP.nodes.forEach(n => {
+    const r = ranks[n.id] || 0;
+    if (!columns[r]) columns[r] = [];
+    columns[r].push(n);
+  });
+
+  const startX = 60;
+  const startY = 80;
+  const gapX = 320; // Enough spacing horizontally for ports and labels
+  const gapY = 160; // Clean vertical distribution
+
+  const sortedRanks = Object.keys(columns).map(Number).sort((a, b) => a - b);
+  sortedRanks.forEach((rank, colIndex) => {
+    const colNodes = columns[rank];
+    // Sort vertical ordering by their previous Y position to preserve design choice
+    colNodes.sort((a, b) => a.y - b.y);
+    colNodes.forEach((node, nodeIndex) => {
+      node.x = startX + colIndex * gapX;
+      node.y = startY + nodeIndex * gapY;
+
+      const el = document.querySelector(`.node[data-id="${node.id}"]`);
+      if (el) {
+        el.style.left = node.x + "px";
+        el.style.top = node.y + "px";
+      }
+    });
+  });
+
+  renderEdges();
+  fitView();
+  pushState();
+
+  const status = document.getElementById("status");
+  status.textContent = "✓ Auto-Layout angewendet.";
+  status.className = "status ok";
 }
 
 /* ---------------------------------------------------------------- Modal */
@@ -622,12 +1042,19 @@ document.getElementById("modal-apply").addEventListener("click", () => {
     closeModal();
     document.getElementById("status").textContent = "✓ Importiert.";
     document.getElementById("status").className = "status ok";
+    pushState();
   } catch (e) {
     alert("JSON-Fehler: " + e.message);
   }
 });
-document.getElementById("btn-clear").addEventListener("click", clearCanvas);
+document.getElementById("btn-clear").addEventListener("click", () => {
+  clearCanvas();
+  pushState();
+});
 document.getElementById("btn-validate").addEventListener("click", validate);
+document.getElementById("btn-autolayout").addEventListener("click", autoLayout);
+document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
 document.getElementById("btn-sample").addEventListener("click", loadSample);
 document.getElementById("btn-generate").addEventListener("click", generatePipeline);
 
@@ -709,9 +1136,17 @@ function showGenerated(data) {
     `;
   }
 
-  document.querySelector("#gen-modal .gen-tab[data-file='components']").textContent = data.components_file;
-  document.querySelector("#gen-modal .gen-tab[data-file='pipeline']").textContent = data.pipeline_file;
-  document.querySelector("#gen-modal .gen-tab[data-file='yaml']").textContent = data.yaml_file;
+  const tComp = document.querySelector("#gen-modal .gen-tab[data-file='components']");
+  tComp.textContent = data.components_file;
+  tComp.title = data.components_file;
+
+  const tPipe = document.querySelector("#gen-modal .gen-tab[data-file='pipeline']");
+  tPipe.textContent = data.pipeline_file;
+  tPipe.title = data.pipeline_file;
+
+  const tYaml = document.querySelector("#gen-modal .gen-tab[data-file='yaml']");
+  tYaml.textContent = data.yaml_file;
+  tYaml.title = data.yaml_file;
   showGenFile("components");
   document.getElementById("gen-modal").classList.remove("hidden");
 }
@@ -768,6 +1203,8 @@ function bindGenModal() {
 // Pipeline-Name
 document.getElementById("pipeline-name").addEventListener("input", (e) => {
   APP.name = e.target.value || DEFAULT_NAME;
+  e.target.title = e.target.value;
+  pushStateDebounced();
 });
 
 // Globale Einstellungen (LLM URL + API-Key)
@@ -784,6 +1221,7 @@ document.getElementById("settings-save").addEventListener("click", () => {
   settingsModal.classList.add("hidden");
   document.getElementById("status").textContent = "✓ Einstellungen gespeichert.";
   document.getElementById("status").className = "status ok";
+  pushState();
 });
 
 // Eingebettetes Beispiel (funktioniert auch ohne Webserver via file://)
@@ -816,8 +1254,14 @@ function loadSample() {
   // Versuche zuerst die externe Datei (wenn per Webserver geladen), sonst eingebettetes Beispiel
   fetch("sample_pipeline.json")
     .then((r) => { if (!r.ok) throw new Error("no file"); return r.json(); })
-    .then((m) => fromModel(m))
-    .catch(() => fromModel(EMBEDDED_SAMPLE));
+    .then((m) => {
+      fromModel(m);
+      pushState();
+    })
+    .catch(() => {
+      fromModel(EMBEDDED_SAMPLE);
+      pushState();
+    });
 }
 
 /* ---------------------------------------------------------------- Zoom & Navigation */
@@ -902,6 +1346,26 @@ document.getElementById("zoom-fit").addEventListener("click", fitView);
 // Hotkeys
 window.addEventListener("keydown", (e) => {
   const tag = (e.target.tagName || "").toLowerCase();
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z logic for Undo/Redo
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key.toLowerCase() === "z") {
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+      return;
+    } else if (e.key.toLowerCase() === "y") {
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      e.preventDefault();
+      redo();
+      return;
+    }
+  }
+
   if (tag === "input" || tag === "textarea" || tag === "select") return; // nicht im Formular
   if (e.key === " ") { spaceDown = true; canvasWrap.style.cursor = "grab"; e.preventDefault(); }
   else if (e.key === "+" || e.key === "=") { zoomBy(1.2); e.preventDefault(); }
@@ -1019,6 +1483,7 @@ function createCodeEditor(node, host, opts) {
   ta.addEventListener("input", () => {
     node.params[paramName] = ta.value;
     refresh();
+    pushStateDebounced();
   });
   ta.addEventListener("scroll", () => {
     pre.scrollTop = ta.scrollTop;
@@ -1033,6 +1498,7 @@ function createCodeEditor(node, host, opts) {
       ta.selectionStart = ta.selectionEnd = s + 4;
       node.params[paramName] = ta.value;
       refresh();
+      pushStateDebounced();
     }
   });
 
@@ -1158,9 +1624,94 @@ function bindPaletteSearch() {
   });
 }
 
+/* ---------------------------------------------------------------- Autosave Handler */
+function checkAndPromptAutosave() {
+  try {
+    const savedStr = localStorage.getItem(AUTOSAVE_KEY);
+    if (!savedStr) return;
+    
+    const savedModel = JSON.parse(savedStr);
+    // Zeige das Modal nicht, wenn der Entwurf leer ist
+    if (!savedModel || !Array.isArray(savedModel.nodes) || savedModel.nodes.length === 0) {
+      return;
+    }
+
+    const modal = document.getElementById("autosave-modal");
+    const nameSpan = document.getElementById("autosave-pipeline-name");
+    const metaDiv = document.getElementById("autosave-meta");
+    const btnRestore = document.getElementById("autosave-restore");
+    const btnDiscard = document.getElementById("autosave-discard");
+
+    if (!modal || !nameSpan || !metaDiv || !btnRestore || !btnDiscard) return;
+
+    nameSpan.textContent = `"${savedModel.name || DEFAULT_NAME}"`;
+    
+    const nodeCount = savedModel.nodes.length;
+    const connCount = (savedModel.connections || []).length;
+    const nodeTypes = [...new Set(savedModel.nodes.map(n => n.type))];
+    const nodeTypesStr = nodeTypes.slice(0, 3).join(", ") + (nodeTypes.length > 3 ? "..." : "");
+
+    metaDiv.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 6px; color: #0f172a; font-size: 13px;">Details zum Entwurf:</div>
+      <ul style="margin: 0; padding-left: 16px; list-style-type: disc; color: #475569; display: flex; flex-direction: column; gap: 4px;">
+        <li>Komponenten: <strong>${nodeCount}</strong> (${nodeTypesStr})</li>
+        <li>Verbindungen: <strong>${connCount}</strong></li>
+      </ul>
+    `;
+
+    modal.classList.remove("hidden");
+
+    const restoreHandler = () => {
+      try {
+        fromModel(savedModel);
+        UNDO_STACK.length = 0;
+        REDO_STACK.length = 0;
+        pushState();
+        fitView();
+        
+        const status = document.getElementById("status");
+        if (status) {
+          status.textContent = "✓ Sitzung wiederhergestellt.";
+          status.className = "status ok";
+        }
+      } catch (err) {
+        console.error("Failed to restore saved state:", err);
+        alert("Fehler beim Wiederherstellen der Sitzung.");
+      }
+      modal.classList.add("hidden");
+      cleanup();
+    };
+
+    const discardHandler = () => {
+      if (confirm("Möchtest du diesen automatisch gespeicherten Entwurf wirklich löschen?")) {
+        try {
+          localStorage.removeItem(AUTOSAVE_KEY);
+        } catch (err) {
+          console.error(err);
+        }
+        modal.classList.add("hidden");
+        cleanup();
+      }
+    };
+
+    function cleanup() {
+      btnRestore.removeEventListener("click", restoreHandler);
+      btnDiscard.removeEventListener("click", discardHandler);
+    }
+
+    btnRestore.addEventListener("click", restoreHandler);
+    btnDiscard.addEventListener("click", discardHandler);
+
+  } catch (err) {
+    console.error("Error reading/parsing autosaved state:", err);
+  }
+}
+
 /* ---------------------------------------------------------------- Init */
 buildPalette();
 bindPaletteSearch();
 bindGenModal();
 bindDeployModal();
 applyTransform();
+pushState();
+checkAndPromptAutosave();

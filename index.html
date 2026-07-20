@@ -22,6 +22,9 @@
       <button id="btn-sample">💡 Beispiel laden</button>
       <button id="btn-generate" style="background: #4f46e5; border-color: #4338ca; color: #fff;">⚡ Pipeline generieren</button>
       <button id="btn-validate">🔍 Validieren</button>
+      <button id="btn-autolayout">📐 Auto-Layout</button>
+      <button id="btn-undo" title="Rückgängig (Ctrl+Z)">↩️ Undo</button>
+      <button id="btn-redo" title="Wiederholen (Ctrl+Y / Ctrl+Shift+Z)">↪️ Redo</button>
       <button id="btn-deploy" style="background: #059669; border-color: #047857; color: #fff;">🚀 Deployment Guide</button>
       <span id="status" class="status"></span>
     </div>
@@ -91,6 +94,23 @@
       <div class="modal-actions">
         <button id="settings-save">Speichern</button>
         <button id="settings-close">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal für Autosave-Wiederherstellung -->
+  <div id="autosave-modal" class="modal hidden">
+    <div class="modal-box" style="max-width: 450px;">
+      <h3>🔄 Letzte Sitzung wiederherstellen?</h3>
+      <p style="margin: 10px 0; font-size: 14px; line-height: 1.5; color: #4b5563;">
+        Es wurde ein automatisch gespeicherter Entwurf für die Pipeline <strong id="autosave-pipeline-name"></strong> gefunden. Möchtest du diese Sitzung wiederherstellen?
+      </p>
+      <div id="autosave-meta" style="margin: 12px 0; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; font-family: monospace; color: #334155; line-height: 1.5;">
+        <!-- Metadaten über gespeicherte Nodes/Connections -->
+      </div>
+      <div class="modal-actions" style="justify-content: flex-end; gap: 8px;">
+        <button id="autosave-discard" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500;">Verwerfen</button>
+        <button id="autosave-restore" style="background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 500;">Wiederherstellen</button>
       </div>
     </div>
   </div>
