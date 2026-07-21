@@ -1054,3 +1054,182 @@ main {
 .deploy-tab-content.hidden {
   display: none !important;
 }
+
+/* --- Onboarding Tutorial Styles --- */
+.tutorial-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(1px);
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.tutorial-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tutorial-highlight {
+  position: relative !important;
+  z-index: 10000 !important;
+  box-shadow: 0 0 0 5px #3b82f6, 0 12px 30px rgba(59, 130, 246, 0.4) !important;
+  border-color: #3b82f6 !important;
+  background: #ffffff !important;
+  pointer-events: none !important; /* Prevent interaction with highlighted elements during tour to avoid messing up step states */
+}
+
+/* Specific resets for highlighted elements to preserve layouts */
+#palette.tutorial-highlight, #inspector.tutorial-highlight, #canvas-wrap.tutorial-highlight {
+  background: #ffffff !important;
+}
+
+.tutorial-card {
+  position: fixed;
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+  padding: 18px;
+  width: 390px;
+  max-width: 90vw;
+  z-index: 10001;
+  font-family: "Inter", system-ui, sans-serif;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: scaleIn 0.2s ease-out;
+}
+
+.tutorial-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 8px;
+}
+
+.tutorial-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tutorial-card-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.tutorial-card-close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.tutorial-card-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.tutorial-card-body strong {
+  color: #0f172a;
+}
+
+.tutorial-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+}
+
+.tutorial-steps-indicator {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.tutorial-steps-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.tutorial-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transition: all 0.2s ease;
+}
+
+.tutorial-dot.active {
+  background: #3b82f6;
+  width: 14px;
+  border-radius: 3.5px;
+}
+
+.tutorial-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  outline: none;
+}
+
+.tutorial-btn-sec {
+  background: #f8fafc;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.tutorial-btn-sec:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.tutorial-btn-pri {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.tutorial-btn-pri:hover {
+  background: #2563eb;
+  transform: translateY(-0.5px);
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+

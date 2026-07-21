@@ -18,6 +18,19 @@ import {
   CUSTOM_CODE_TEMPLATE,
 } from "./components_templates";
 
+// Sanitizes pipeline/model name to be a safe, valid Python identifier and safe filename
+function getSafeName(rawName: string): string {
+  let name = (rawName || "pipeline")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  
+  if (/^[0-9]/.test(name)) {
+    name = "_" + name;
+  }
+  return name || "pipeline";
+}
+
 // Format a Javascript/JSON value into a valid Python literal representation
 function pyValue(v: any): string {
   if (typeof v === "boolean") {
@@ -133,7 +146,7 @@ function buildComponentsFile(model: any): string {
 
 // Generates the Python pipeline setup script from the diagram model
 function buildPipelineFile(model: any, componentsModule: string): string {
-  const name = model.name || "pipeline";
+  const name = getSafeName(model.name);
   const nodes = model.nodes || [];
   const conns = model.connections || [];
 
@@ -235,7 +248,7 @@ function detectCycles(model: any): { hasCycle: boolean; path: string[] } {
     adj[n.id] = [];
   }
   for (const c of conns) {
-    if (adj[c.from]) {
+    if (c.from && c.to && adj[c.from]) {
       adj[c.from].push(c.to);
     }
   }
@@ -300,7 +313,7 @@ app.post("/generate", (req, res) => {
       return res.status(400).json({ error: "Ungültige Model-Struktur." });
     }
 
-    const name = (model.name || "pipeline").replace(/\s+/g, "_");
+    const name = getSafeName(model.name);
     const componentsCode = buildComponentsFile(model);
     const pipelineCode = buildPipelineFile(model, `${name}_components`);
     const yamlCode = buildYamlFile(model);
@@ -348,6 +361,7 @@ app.post("/generate", (req, res) => {
       }
     });
   } catch (error: any) {
+    console.error("SERVER ERROR IN /generate:", error);
     res.status(500).json({ error: `Parser-Fehler: ${error.message}` });
   }
 });
@@ -360,7 +374,7 @@ app.post("/validate", (req, res) => {
       return res.status(400).json({ error: "Ungültige Model-Struktur." });
     }
 
-    const name = (model.name || "pipeline").replace(/\s+/g, "_");
+    const name = getSafeName(model.name);
     const componentsCode = buildComponentsFile(model);
     const pipelineCode = buildPipelineFile(model, `${name}_components`);
 
@@ -403,6 +417,7 @@ app.post("/validate", (req, res) => {
       }
     });
   } catch (error: any) {
+    console.error("SERVER ERROR IN /validate:", error);
     res.status(500).json({ error: `Validierung-Fehler: ${error.message}` });
   }
 });
@@ -536,7 +551,7 @@ function runCLI(args: string[]) {
       process.exit(1);
     }
 
-    const name = (model.name || "pipeline").replace(/\s+/g, "_");
+    const name = getSafeName(model.name);
     const componentsCode = buildComponentsFile(model);
     const pipelineCode = buildPipelineFile(model, `${name}_components`);
 

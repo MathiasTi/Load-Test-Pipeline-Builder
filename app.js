@@ -1253,7 +1253,13 @@ const EMBEDDED_SAMPLE = {
 function loadSample() {
   // Versuche zuerst die externe Datei (wenn per Webserver geladen), sonst eingebettetes Beispiel
   fetch("sample_pipeline.json")
-    .then((r) => { if (!r.ok) throw new Error("no file"); return r.json(); })
+    .then((r) => {
+      const contentType = r.headers.get("content-type");
+      if (!r.ok || !contentType || !contentType.includes("application/json")) {
+        throw new Error("not JSON");
+      }
+      return r.json();
+    })
     .then((m) => {
       fromModel(m);
       pushState();
@@ -1586,7 +1592,7 @@ function bindDeployModal() {
     }
   });
 
-  const tabs = ["arch", "fastapi", "docker", "standard"];
+  const tabs = ["arch", "fastapi", "docker", "standard", "prodready"];
   tabs.forEach((t) => {
     const btn = document.getElementById(`tab-btn-${t}`);
     if (btn) {
@@ -1603,6 +1609,17 @@ function bindDeployModal() {
         content.classList.toggle("hidden", t !== tabName);
       }
     });
+
+    if (tabName === "arch" && window.mermaid) {
+      setTimeout(() => {
+        try {
+          // Force Mermaid rendering on modal tab activation
+          window.mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+        } catch (e) {
+          console.error("Mermaid live render error:", e);
+        }
+      }, 50);
+    }
   }
 }
 
@@ -1707,11 +1724,233 @@ function checkAndPromptAutosave() {
   }
 }
 
+/* ---------------------------------------------------------------- Onboarding Tutorial */
+let currentTutorialStep = 0;
+const tutorialSteps = [
+  {
+    title: "Die Komponenten-Palette 🛠️",
+    body: "Auf der linken Seite befindet sich die <strong>Komponenten-Palette</strong>. Hier findest du alle verfügbaren Haystack v2 Bausteine: <em>Log-Loader, Filter, LLM-Generatoren</em> und <em>Exporteure</em>. Du kannst die Liste filtern oder aufklappen, um den passenden Knoten für dein Lasttest-Szenario zu finden.",
+    targetId: "palette",
+    position: (targetRect, cardWidth, cardHeight) => {
+      return {
+        top: Math.max(20, targetRect.top + 60),
+        left: targetRect.right + 20
+      };
+    }
+  },
+  {
+    title: "Komponenten hinzufügen 🖱️",
+    body: "Um eine neue Komponente auf das Canvas zu bringen, ziehe sie einfach mit <strong>Drag & Drop</strong> auf die freie Fläche.<br/><br/>Alternativ kannst du auch einfach auf ein beliebiges Element in der Liste <strong>klicken</strong> – der Builder platziert es dann automatisch für dich auf dem Canvas!",
+    targetId: "palette-groups",
+    position: (targetRect, cardWidth, cardHeight) => {
+      return {
+        top: Math.max(20, targetRect.top + 120),
+        left: targetRect.right + 20
+      };
+    }
+  },
+  {
+    title: "Interaktives Canvas & Zoom 🎨",
+    body: "Das zentrale <strong>Canvas</strong> ist deine Arbeitsfläche. Du kannst:<br/>" +
+          "• Es verschieben (<strong>Pan</strong>) mit gedrückter <em>Leertaste + Mausziehen</em> oder Klick mit dem Mausrad.<br/>" +
+          "• Hinein- und herauszoomen mit dem <em>Mausrad</em> oder den <strong>Zoom-Tasten</strong> unten links.<br/>" +
+          "• Die Knoten sauber aneinander ausrichten lassen per <strong>Auto-Layout</strong>.",
+    targetId: "canvas-wrap",
+    position: (targetRect, cardWidth, cardHeight) => {
+      return {
+        top: targetRect.bottom - cardHeight - 80,
+        left: targetRect.left + (targetRect.width - cardWidth) / 2
+      };
+    }
+  },
+  {
+    title: "Parameter-Inspector ⚙️",
+    body: "Wählst du eine Komponente auf dem Canvas aus, öffnet sich rechts der <strong>Inspector</strong>.<br/><br/>Hier kannst du alle Parameter im Detail einstellen. Für hochentwickelte Knoten (wie den Python-Code-Filter) kannst du den Code sogar in einem großen Editor bearbeiten und die Syntax live prüfen lassen!",
+    targetId: "inspector",
+    position: (targetRect, cardWidth, cardHeight) => {
+      return {
+        top: Math.max(20, targetRect.top + 60),
+        left: targetRect.left - cardWidth - 20
+      };
+    }
+  },
+  {
+    title: "Validieren & Generieren ⚡",
+    body: "Nachdem du die Ports per Drag von Output zu Input verbunden hast, kannst du deine Pipeline über <strong>Validieren</strong> auf Fehler oder isolierte Knoten prüfen.<br/><br/>Ein Klick auf <strong>Pipeline generieren</strong> erzeugt die fertigen Python-Scripte und das deklarative v2 YAML für deine Container-Laufzeit!",
+    targetId: "btn-generate",
+    position: (targetRect, cardWidth, cardHeight) => {
+      return {
+        top: targetRect.bottom + 15,
+        left: Math.max(20, targetRect.left - cardWidth / 2)
+      };
+    }
+  }
+];
+
+function bindTutorial() {
+  const btnTutorial = document.getElementById("btn-tutorial");
+  if (!btnTutorial) return;
+
+  btnTutorial.addEventListener("click", () => {
+    startTutorial();
+  });
+}
+
+function startTutorial() {
+  currentTutorialStep = 0;
+  const backdrop = document.getElementById("tutorial-backdrop");
+  if (backdrop) backdrop.classList.add("active");
+  showTutorialStep(currentTutorialStep);
+}
+
+function stopTutorial() {
+  const backdrop = document.getElementById("tutorial-backdrop");
+  if (backdrop) backdrop.classList.remove("active");
+  
+  // Remove card
+  const oldCard = document.getElementById("tutorial-active-card");
+  if (oldCard) oldCard.remove();
+
+  // Remove highlight classes
+  document.querySelectorAll(".tutorial-highlight").forEach(el => {
+    el.classList.remove("tutorial-highlight");
+  });
+}
+
+function showTutorialStep(index) {
+  // Clear any existing highlight
+  document.querySelectorAll(".tutorial-highlight").forEach(el => {
+    el.classList.remove("tutorial-highlight");
+  });
+
+  const step = tutorialSteps[index];
+  const targetEl = document.getElementById(step.targetId) || document.querySelector("." + step.targetId);
+  
+  if (targetEl) {
+    targetEl.classList.add("tutorial-highlight");
+    if (step.targetId === "canvas-wrap") {
+      const zoomCtrls = document.getElementById("zoom-controls");
+      if (zoomCtrls) zoomCtrls.classList.add("tutorial-highlight");
+    }
+  }
+
+  // Remove old card if exists
+  let card = document.getElementById("tutorial-active-card");
+  if (!card) {
+    card = document.createElement("div");
+    card.id = "tutorial-active-card";
+    card.className = "tutorial-card";
+    document.body.appendChild(card);
+  }
+
+  // Build dots
+  const dotsHtml = tutorialSteps.map((_, i) => `
+    <span class="tutorial-dot ${i === index ? 'active' : ''}"></span>
+  `).join("");
+
+  card.innerHTML = `
+    <div class="tutorial-card-header">
+      <span class="tutorial-card-title">${step.title}</span>
+      <button class="tutorial-card-close" onclick="stopTutorial()">✕</button>
+    </div>
+    <div class="tutorial-card-body">
+      ${step.body}
+    </div>
+    <div class="tutorial-card-footer">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <span class="tutorial-steps-indicator">Schritt ${index + 1} von ${tutorialSteps.length}</span>
+        <div class="tutorial-steps-dots">${dotsHtml}</div>
+      </div>
+      <div class="tutorial-actions">
+        ${index > 0 ? `<button class="tutorial-btn tutorial-btn-sec" id="tut-prev">Zurück</button>` : ''}
+        <button class="tutorial-btn tutorial-btn-pri" id="tut-next">
+          ${index === tutorialSteps.length - 1 ? 'Fertigstellen 🎉' : 'Weiter'}
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Position card
+  setTimeout(() => {
+    const cardRect = card.getBoundingClientRect();
+    let targetRect = { 
+      top: window.innerHeight / 2 - cardRect.height / 2, 
+      left: window.innerWidth / 2 - cardRect.width / 2, 
+      right: window.innerWidth / 2 + cardRect.width / 2, 
+      bottom: window.innerHeight / 2 + cardRect.height / 2, 
+      width: 0, 
+      height: 0 
+    };
+    
+    if (targetEl) {
+      targetRect = targetEl.getBoundingClientRect();
+    }
+
+    const pos = step.position(targetRect, cardRect.width, cardRect.height);
+    
+    // Boundary check
+    let top = pos.top;
+    let left = pos.left;
+
+    if (top + cardRect.height > window.innerHeight) {
+      top = window.innerHeight - cardRect.height - 20;
+    }
+    if (top < 10) top = 10;
+    
+    if (left + cardRect.width > window.innerWidth) {
+      left = window.innerWidth - cardRect.width - 20;
+    }
+    if (left < 10) left = 10;
+
+    card.style.top = `${top}px`;
+    card.style.left = `${left}px`;
+  }, 30);
+
+  // Bind actions
+  const prevBtn = card.querySelector("#tut-prev");
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      currentTutorialStep--;
+      showTutorialStep(currentTutorialStep);
+    });
+  }
+
+  const nextBtn = card.querySelector("#tut-next");
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      if (index === tutorialSteps.length - 1) {
+        stopTutorial();
+        const status = document.getElementById("status");
+        if (status) {
+          status.textContent = "🎉 Onboarding abgeschlossen! Du bist startklar.";
+          status.className = "status ok";
+        }
+      } else {
+        currentTutorialStep++;
+        showTutorialStep(currentTutorialStep);
+      }
+    });
+  }
+}
+
+// Make globally accessible since card close uses inline onclick="stopTutorial()"
+window.stopTutorial = stopTutorial;
+
 /* ---------------------------------------------------------------- Init */
 buildPalette();
 bindPaletteSearch();
 bindGenModal();
 bindDeployModal();
+bindTutorial();
 applyTransform();
 pushState();
 checkAndPromptAutosave();
+
+// Auto-start onboarding for first-time visitors who don't have anything configured
+setTimeout(() => {
+  const completed = localStorage.getItem("haystack_onboarding_completed");
+  if (!completed && APP.nodes.length === 0) {
+    startTutorial();
+    localStorage.setItem("haystack_onboarding_completed", "true");
+  }
+}, 1200);
